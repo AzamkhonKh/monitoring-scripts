@@ -515,13 +515,19 @@ EOF
 create_service() {
     local service_file="/etc/systemd/system/${SERVICE_NAME}.service"
     local config_file="$CONFIG_DIR/my.cnf"
-    
+
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "[DRY RUN] Would create systemd service: $service_file"
         return
     fi
 
-    log_info "Creating systemd service: $service_file"
+    log_info "Preparing to create systemd service: $service_file"
+
+    # Check if exporter binary exists
+    if [[ ! -x "$INSTALL_DIR/mysqld_exporter" ]]; then
+        log_error "mysqld_exporter binary not found at $INSTALL_DIR/mysqld_exporter. Aborting service creation."
+        exit 1
+    fi
 
     cat > "$service_file" << EOF
 [Unit]
@@ -542,11 +548,16 @@ KillMode=process
 WantedBy=multi-user.target
 EOF
 
-    # Reload systemd and enable service
+    log_info "Reloading systemd daemon and enabling service: $SERVICE_NAME"
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
-    
-    log_success "Systemd service created and enabled"
+
+    if [[ $? -eq 0 ]]; then
+        log_success "Systemd service created and enabled"
+    else
+        log_error "Failed to enable systemd service. Check permissions and systemd logs."
+        exit 1
+    fi
 }
 
 # Start MySQL Exporter service
