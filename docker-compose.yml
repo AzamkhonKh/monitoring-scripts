@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  centos-systemd:
+    build:
+      context: .
+      dockerfile: Dockerfile.centos-systemd
+    container_name: centos-systemd-test
+    privileged: true
+    environment:
+      - container=docker
+    volumes:
+      - ./:/scripts:rw
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    tty: true
+    stdin_open: true
+    command: /usr/sbin/init
+    ports:
+      - "2222:22"
