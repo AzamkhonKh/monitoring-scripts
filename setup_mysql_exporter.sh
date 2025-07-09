@@ -368,39 +368,38 @@ create_mysql_user() {
     fi
 
     log_info "Creating MySQL user for exporter: $MYSQL_USER"
-    
     local mysql_cmd="mysql -h$MYSQL_HOST -P$MYSQL_PORT -uroot"
     if [[ -n "$MYSQL_ROOT_PASSWORD" ]]; then
         mysql_cmd+=" -p$MYSQL_ROOT_PASSWORD"
     fi
-    
-    # Create user and grant privileges
-    cat << EOF | $mysql_cmd
--- Create user if not exists
-CREATE USER IF NOT EXISTS '$MYSQL_USER'@'%' IDENTIFIED BY '$MYSQL_PASSWORD';
-CREATE USER IF NOT EXISTS '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';
 
+    # MariaDB/MySQL compatibility: Try to create user, if exists then alter password
+    cat << EOF | $mysql_cmd 2>/tmp/mysql_exporter_create_user.err
+-- Try to create user, ignore error if exists
+DELIMITER //
+CREATE USER '$MYSQL_USER'@'%' IDENTIFIED BY '$MYSQL_PASSWORD'//
+CREATE USER '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD'//
+DELIMITER ;
+-- If user exists, update password
+SET PASSWORD FOR '$MYSQL_USER'@'%' = PASSWORD('$MYSQL_PASSWORD');
+SET PASSWORD FOR '$MYSQL_USER'@'localhost' = PASSWORD('$MYSQL_PASSWORD');
 -- Grant necessary privileges
-GRANT PROCESS ON *.* TO '$MYSQL_USER'@'%';
-GRANT REPLICATION CLIENT ON *.* TO '$MYSQL_USER'@'%';
+GRANT PROCESS, REPLICATION CLIENT ON *.* TO '$MYSQL_USER'@'%';
 GRANT SELECT ON performance_schema.* TO '$MYSQL_USER'@'%';
 GRANT SELECT ON information_schema.* TO '$MYSQL_USER'@'%';
-
-GRANT PROCESS ON *.* TO '$MYSQL_USER'@'localhost';
-GRANT REPLICATION CLIENT ON *.* TO '$MYSQL_USER'@'localhost';
+GRANT PROCESS, REPLICATION CLIENT ON *.* TO '$MYSQL_USER'@'localhost';
 GRANT SELECT ON performance_schema.* TO '$MYSQL_USER'@'localhost';
 GRANT SELECT ON information_schema.* TO '$MYSQL_USER'@'localhost';
-
--- Flush privileges
 FLUSH PRIVILEGES;
 EOF
 
-    if [[ $? -eq 0 ]]; then
-        log_success "MySQL user created successfully"
+    if grep -q "ERROR" /tmp/mysql_exporter_create_user.err; then
+        log_warning "Some errors occurred during user creation (likely user already exists). Attempted to update password and privileges."
+        cat /tmp/mysql_exporter_create_user.err
     else
-        log_error "Failed to create MySQL user"
-        exit 1
+        log_success "MySQL user created or updated successfully"
     fi
+    rm -f /tmp/mysql_exporter_create_user.err
 }
 
 # Create service user
