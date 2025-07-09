@@ -4,6 +4,41 @@
 
 set -euo pipefail
 
+# Check if promtail is installed, if not, install it
+if ! command -v promtail &>/dev/null; then
+    echo "[INFO] promtail not found, attempting to install..."
+    # Detect OS and architecture
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+    else
+        OS="unknown"
+    fi
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) ARCH="amd64";;
+        aarch64) ARCH="arm64";;
+        armv7l) ARCH="armv7";;
+        *) echo "[ERROR] Unsupported architecture: $ARCH" >&2; exit 1;;
+    esac
+    PROMTAIL_VERSION="2.9.4"
+    URL="https://github.com/grafana/loki/releases/download/v${PROMTAIL_VERSION}/promtail-linux-${ARCH}.zip"
+    TMPDIR="/tmp/promtail_install"
+    mkdir -p "$TMPDIR"
+    cd "$TMPDIR"
+    echo "[INFO] Downloading promtail from $URL ..."
+    if ! curl -sSL "$URL" -o promtail.zip; then
+        echo "[ERROR] Failed to download promtail." >&2
+        exit 1
+    fi
+    unzip -o promtail.zip
+    chmod +x promtail-linux-${ARCH}
+    mv promtail-linux-${ARCH} /usr/local/bin/promtail
+    cd /
+    rm -rf "$TMPDIR"
+    echo "[INFO] promtail installed to /usr/local/bin/promtail"
+fi
+
 PROMTAIL_CONFIG="/etc/promtail/promtail-config.yaml"
 APACHE_ACCESS_LOG="/var/log/httpd/access_log"
 APACHE_ERROR_LOG="/var/log/httpd/error_log"
