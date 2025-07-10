@@ -1,0 +1,50 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  http_server_read_timeout: 2m
+  http_server_write_timeout: 2m
+
+# Configure Loki to act as a single, all-in-one process.
+target: all
+
+schema_config:
+  configs:
+    - from: 2025-01-01 # A date in the past is required.
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+# Configuration for where the index and chunks are stored on disk.
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /var/loki/boltdb-shipper-active
+    cache_location: /var/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+  filesystem:
+    directory: /var/loki/chunks
+
+# These settings are CRITICAL for low-memory environments.
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+  chunk_idle_period: 3m
+  max_chunk_age: 1h
+  chunk_target_size: 1048576 # 1MB
+
+# These limits protect your server from bad queries or high log volume.
+limits_config:
+  allow_structured_metadata: false
+
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_query_length: 72h
+  max_query_parallelism: 4
+  max_streams_per_user: 2000

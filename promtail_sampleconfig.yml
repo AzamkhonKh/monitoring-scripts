@@ -1,0 +1,53 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  # change loki address
+  - url: http://{loki address}/loki/api/v1/push
+
+scrape_configs:
+  - job_name: apache_access
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: "apache_access"
+          # set up static source to patche lable, if __host__ not works
+          source: [__host__]
+          __path__: /var/log/httpd/access_log
+
+    pipeline_stages:
+      # This replaces the incorrect 'logfmt' stage.
+      - regex:
+          expression: '^(?P<remote_ip>\S+) (?P<logname>\S+) (?P<user>\S+) \[(?P<time_local>[^\]]+)\] \"(?P<method>\S+) (?P<endpoint>\S+) (?P<http_version>\S+)\" (?P<status>\d{3}) (?P<response_size_bytes>\S+) \"(?P<referer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\" (?P<response_time_microseconds>\d+)$'
+
+      - timestamp:
+          source: time_local
+          format: "02/Jan/2006:15:04:05 -0700"
+
+      # Stage 4: Define which parsed fields become INDEXED labels in Loki.
+      # We only index 'status' and 'method' because they have low cardinality (few unique values).
+      # This is safe for low-resource systems.
+      - labels:
+          status:
+          method:
+          response_time_microseconds:
+          response_size_bytes:
+
+  - job_name: apache_error
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: "apache_error"
+          source: [__host__]
+          __path__: /var/log/httpd/error_log
+
+    pipeline_stages:
+      - regex:
+          expression: '^\[(?P<timestamp>[^\]]+)\] \[(?P<module>[^\]:]+):(?P<level>[^\]]+)\] \[pid (?P<pid>[0-9]+)\]( \[client (?P<client>[^\]]+)\])? (?P<message>.*)$'
+      - labels:
+          module:
+          level:
